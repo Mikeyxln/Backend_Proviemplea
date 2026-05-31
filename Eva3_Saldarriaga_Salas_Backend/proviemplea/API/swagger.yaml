@@ -1,0 +1,1019 @@
+openapi: 3.0.0
+
+info:
+  title: API ProviEmplea
+  version: 1.0.0
+  description: |
+    API REST para la plataforma **ProviEmplea**, una vitrina digital de talentos
+    donde las empresas buscan candidatos de Providencia (busqueda inversa de empleo).
+
+    ## Autenticacion
+    Cada recurso utiliza tokens Bearer distintos por metodo HTTP para mayor seguridad:
+    - **GET**    -> `Bearer: {recurso}.get`
+    - **POST**   -> `Bearer: {recurso}.post`
+    - **PUT**    -> `Bearer: {recurso}.put`
+    - **DELETE** -> `Bearer: {recurso}.delete`
+    - **PATCH**  -> `Bearer: {recurso}.patch`
+
+    Ejemplo para CANDIDATOS: `candidatos.get`
+
+    ## Rate Limiting (Limitacion de solicitudes)
+    Para proteger el rendimiento del servidor se aplican los siguientes limites:
+    - **GET**: maximo 100 solicitudes por minuto por IP
+    - **POST / PUT / PATCH / DELETE**: maximo 30 solicitudes por minuto por IP
+    - Al superar el limite se retorna HTTP 429 (Too Many Requests)
+    - Se recomienda implementar cache en el cliente para operaciones GET frecuentes
+
+    ## Estrategia de Cache
+    - Las respuestas GET pueden almacenarse en cache por 60 segundos
+    - Para datos en tiempo real, agregar el header `Cache-Control: no-cache`
+    - Tiempos de respuesta esperados: GET < 200ms, POST/PUT/DELETE < 500ms
+
+servers:
+  - url: http://localhost/proviemplea/API
+    description: Servidor local XAMPP (desarrollo)
+
+# ============================================================
+# Esquemas de seguridad reutilizables
+# ============================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+      
+
+  # ============================================================
+  # Esquemas de datos reutilizables (componentes)
+  # ============================================================
+  schemas:
+
+    # --- CANDIDATO ---
+    CandidatoBody:
+      type: object
+      required:
+        - VCH_TITULO_PERFIL
+        - VCH_DESCRIPCION
+        - INT_ANIOS_EXPERIENCIA
+      properties:
+        VCH_TITULO_PERFIL:
+          type: string
+          maxLength: 100
+          description: Titulo o cargo del perfil profesional (sin datos personales)
+          example: "Tecnico en Informatica"
+        VCH_DESCRIPCION:
+          type: string
+          maxLength: 500
+          description: Descripcion de habilidades y experiencia del candidato
+          example: "Experiencia en soporte tecnico, redes y desarrollo web basico"
+        INT_ANIOS_EXPERIENCIA:
+          type: integer
+          minimum: 0
+          description: Anios de experiencia laboral en el area
+          example: 3
+
+    CandidatoResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        titulo_perfil:
+          type: string
+          example: "Tecnico en Informatica"
+        descripcion:
+          type: string
+          example: "Experiencia en soporte tecnico, redes y desarrollo web basico"
+        anios_experiencia:
+          type: integer
+          example: 3
+        activo:
+          type: integer
+          enum: [0, 1]
+          description: "1 = activo (visible), 0 = inactivo (oculto)"
+          example: 1
+
+    CandidatoPut:
+      allOf:
+        - $ref: '#/components/schemas/CandidatoBody'
+        - type: object
+          required:
+            - ID_CANDIDATO
+          properties:
+            ID_CANDIDATO:
+              type: integer
+              description: ID del candidato a actualizar
+              example: 1
+
+    # --- EMPRESA ---
+    EmpresaBody:
+      type: object
+      required:
+        - VCH_NOMBRE_EMPRESA
+        - VCH_RUBRO
+        - VCH_DESCRIPCION
+      properties:
+        VCH_NOMBRE_EMPRESA:
+          type: string
+          maxLength: 100
+          description: Razon social o nombre de la empresa
+          example: "TechCorp SPA"
+        VCH_RUBRO:
+          type: string
+          maxLength: 100
+          description: Sector o industria a la que pertenece la empresa
+          example: "Tecnologia"
+        VCH_DESCRIPCION:
+          type: string
+          maxLength: 300
+          description: Descripcion general de la empresa y sus actividades
+          example: "Empresa de desarrollo de software y consultoria TI"
+
+    EmpresaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nombre_empresa:
+          type: string
+          example: "TechCorp SPA"
+        rubro:
+          type: string
+          example: "Tecnologia"
+        descripcion:
+          type: string
+          example: "Empresa de desarrollo de software y consultoria TI"
+        activo:
+          type: integer
+          enum: [0, 1]
+          example: 1
+
+    EmpresaPut:
+      allOf:
+        - $ref: '#/components/schemas/EmpresaBody'
+        - type: object
+          required:
+            - ID_EMPRESA
+          properties:
+            ID_EMPRESA:
+              type: integer
+              example: 1
+
+    # --- HABILIDAD ---
+    HabilidadBody:
+      type: object
+      required:
+        - VCH_NOMBRE_HABILIDAD
+        - VCH_CATEGORIA
+      properties:
+        VCH_NOMBRE_HABILIDAD:
+          type: string
+          maxLength: 100
+          description: Nombre de la habilidad (tecnica o blanda)
+          example: "PHP"
+        VCH_CATEGORIA:
+          type: string
+          maxLength: 50
+          description: Clasificacion de la habilidad
+          enum: ["Tecnica", "Blanda"]
+          example: "Tecnica"
+
+    HabilidadResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nombre_habilidad:
+          type: string
+          example: "PHP"
+        categoria:
+          type: string
+          example: "Tecnica"
+        activo:
+          type: integer
+          enum: [0, 1]
+          example: 1
+
+    HabilidadPut:
+      allOf:
+        - $ref: '#/components/schemas/HabilidadBody'
+        - type: object
+          required:
+            - ID_HABILIDAD
+          properties:
+            ID_HABILIDAD:
+              type: integer
+              example: 1
+
+    # --- Respuestas genericas ---
+    RespuestaExito:
+      type: object
+      properties:
+        type:
+          type: string
+          example: "msg"
+        msg:
+          type: string
+          example: "Operacion realizada correctamente"
+
+    RespuestaError:
+      type: object
+      properties:
+        type:
+          type: string
+          example: "error"
+        msg:
+          type: string
+          example: "Descripcion del error"
+
+    IdBody:
+      type: object
+      required:
+        - id
+      description: Se envía solo el ID del recurso a afectar
+
+# ============================================================
+# Endpoints (rutas)
+# ============================================================
+paths:
+
+  # ===========================================================
+  # CANDIDATOS
+  # ===========================================================
+  /CANDIDATOS/:
+
+    # GET - Listar todos los candidatos
+    get:
+      tags:
+        - Candidatos
+      summary: Obtener todos los candidatos
+      description: |
+        Retorna la lista completa de candidatos registrados en la plataforma.
+        Los perfiles NO incluyen datos sociodemograficos (nombre, edad, genero, comuna)
+        para evitar discriminacion arbitraria en el proceso de seleccion.
+
+        **Cache**: Esta respuesta puede almacenarse en cache por 60 segundos.
+        **Rate limit**: max 100 solicitudes/minuto.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de candidatos obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CandidatoResponse'
+              example:
+                data:
+                  - id: 1
+                    titulo_perfil: "Tecnico en Informatica"
+                    descripcion: "Experiencia en soporte tecnico, redes y desarrollo web"
+                    anios_experiencia: 3
+                    activo: 1
+                  - id: 2
+                    titulo_perfil: "Contador Auditor"
+                    descripcion: "Manejo de Excel avanzado, contabilidad general"
+                    anios_experiencia: 5
+                    activo: 1
+        '401':
+          description: Sin autorizacion (falta el header Authorization)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+              example:
+                type: "error"
+                msg: "Sin Autorizacion"
+        '403':
+          description: Token incorrecto o sin permiso para este metodo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+              example:
+                type: "error"
+                msg: "Acceso Prohibido"
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    # POST - Crear nuevo candidato
+    post:
+      tags:
+        - Candidatos
+      summary: Crear un nuevo candidato
+      description: |
+        Registra un nuevo perfil de candidato en la plataforma.
+        No se solicitan datos sociodemograficos.
+        **Rate limit**: max 30 solicitudes/minuto.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidatoBody'
+            examples:
+              tecnico:
+                summary: Ejemplo perfil tecnico
+                value:
+                  VCH_TITULO_PERFIL: "Tecnico en Informatica"
+                  VCH_DESCRIPCION: "Experiencia en soporte tecnico, redes y desarrollo web basico"
+                  INT_ANIOS_EXPERIENCIA: 3
+              contador:
+                summary: Ejemplo perfil contador
+                value:
+                  VCH_TITULO_PERFIL: "Contador Auditor"
+                  VCH_DESCRIPCION: "Manejo de Excel avanzado, contabilidad general y tributaria"
+                  INT_ANIOS_EXPERIENCIA: 5
+      responses:
+        '201':
+          description: Candidato creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+              example:
+                type: "msg"
+                msg: "Candidato creado correctamente"
+        '400':
+          description: Datos incompletos en el cuerpo de la solicitud
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+              example:
+                type: "error"
+                msg: "Datos incompletos"
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: No se pudo insertar en la base de datos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    # PUT - Actualizar candidato completo
+    put:
+      tags:
+        - Candidatos
+      summary: Actualizar todos los datos de un candidato
+      description: |
+        Actualiza todos los campos de un candidato existente. Se requiere enviar todos
+        los campos junto al ID del candidato.
+        **Rate limit**: max 30 solicitudes/minuto.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidatoPut'
+            example:
+              ID_CANDIDATO: 1
+              VCH_TITULO_PERFIL: "Tecnico en Informatica Senior"
+              VCH_DESCRIPCION: "Experiencia en soporte tecnico, redes, servidores y desarrollo web"
+              INT_ANIOS_EXPERIENCIA: 5
+      responses:
+        '200':
+          description: Candidato actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+              example:
+                type: "msg"
+                msg: "Candidato actualizado correctamente"
+        '400':
+          description: Datos incompletos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: No se pudo actualizar en la base de datos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    # DELETE - Eliminar candidato
+    delete:
+      tags:
+        - Candidatos
+      summary: Eliminar un candidato
+      description: |
+        Elimina permanentemente un candidato de la base de datos por su ID.
+        Esta accion no se puede deshacer. Se recomienda usar PATCH para desactivar
+        en lugar de eliminar definitivamente.
+        **Rate limit**: max 30 solicitudes/minuto.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ID_CANDIDATO
+              properties:
+                ID_CANDIDATO:
+                  type: integer
+                  description: ID del candidato a eliminar
+                  example: 1
+            example:
+              ID_CANDIDATO: 1
+      responses:
+        '200':
+          description: Candidato eliminado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+              example:
+                type: "msg"
+                msg: "Candidato eliminado correctamente"
+        '400':
+          description: ID no proporcionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: No se pudo eliminar en la base de datos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    # PATCH - Encender o apagar candidato
+    patch:
+      tags:
+        - Candidatos
+      summary: Encender o apagar un candidato (cambiar estado activo)
+      description: |
+        Cambia el estado de visibilidad del candidato en la plataforma.
+        Si esta activo (1) lo desactiva (0), y viceversa.
+        Los candidatos inactivos no son visibles para las empresas.
+        **Rate limit**: max 30 solicitudes/minuto.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ID_CANDIDATO
+              properties:
+                ID_CANDIDATO:
+                  type: integer
+                  description: ID del candidato cuyo estado se desea cambiar
+                  example: 1
+            example:
+              ID_CANDIDATO: 1
+      responses:
+        '200':
+          description: Estado del candidato cambiado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+              example:
+                type: "msg"
+                msg: "Estado del candidato actualizado"
+        '400':
+          description: ID no proporcionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: No se pudo actualizar el estado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+  # ===========================================================
+  # EMPRESAS
+  # ===========================================================
+  /EMPRESAS/:
+
+    get:
+      tags:
+        - Empresas
+      summary: Obtener todas las empresas
+      description: |
+        Retorna la lista de empresas registradas en la plataforma que pueden
+        buscar y contactar candidatos.
+        **Cache**: Respuesta cacheable por 60 segundos.
+        **Rate limit**: max 100 solicitudes/minuto.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de empresas obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EmpresaResponse'
+              example:
+                data:
+                  - id: 1
+                    nombre_empresa: "TechCorp SPA"
+                    rubro: "Tecnologia"
+                    descripcion: "Empresa de desarrollo de software y consultoria TI"
+                    activo: 1
+        '401':
+          description: Sin autorizacion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    post:
+      tags:
+        - Empresas
+      summary: Crear una nueva empresa
+      description: Registra una nueva empresa en la plataforma ProviEmplea.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmpresaBody'
+            examples:
+              tecnologia:
+                summary: Empresa tecnologica
+                value:
+                  VCH_NOMBRE_EMPRESA: "TechCorp SPA"
+                  VCH_RUBRO: "Tecnologia"
+                  VCH_DESCRIPCION: "Empresa de desarrollo de software y consultoria TI"
+              finanzas:
+                summary: Empresa de finanzas
+                value:
+                  VCH_NOMBRE_EMPRESA: "Contadores Asociados"
+                  VCH_RUBRO: "Finanzas"
+                  VCH_DESCRIPCION: "Firma contable con mas de 10 anos en el mercado"
+      responses:
+        '201':
+          description: Empresa creada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: Datos incompletos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al insertar en BD
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    put:
+      tags:
+        - Empresas
+      summary: Actualizar todos los datos de una empresa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmpresaPut'
+            example:
+              ID_EMPRESA: 1
+              VCH_NOMBRE_EMPRESA: "TechCorp Chile SPA"
+              VCH_RUBRO: "Tecnologia e Innovacion"
+              VCH_DESCRIPCION: "Empresa de desarrollo de software, consultoria TI y transformacion digital"
+      responses:
+        '200':
+          description: Empresa actualizada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: Datos incompletos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al actualizar en BD
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    delete:
+      tags:
+        - Empresas
+      summary: Eliminar una empresa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ID_EMPRESA
+              properties:
+                ID_EMPRESA:
+                  type: integer
+                  example: 1
+      responses:
+        '200':
+          description: Empresa eliminada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: ID no proporcionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al eliminar en BD
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    patch:
+      tags:
+        - Empresas
+      summary: Encender o apagar una empresa
+      description: Cambia el estado activo/inactivo de una empresa en la plataforma.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ID_EMPRESA
+              properties:
+                ID_EMPRESA:
+                  type: integer
+                  example: 1
+      responses:
+        '200':
+          description: Estado de la empresa actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: ID no proporcionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al actualizar el estado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+  # ===========================================================
+  # HABILIDADES
+  # ===========================================================
+  /HABILIDADES/:
+
+    get:
+      tags:
+        - Habilidades
+      summary: Obtener todas las habilidades del catalogo
+      description: |
+        Retorna el catalogo completo de habilidades disponibles en la plataforma.
+        Las habilidades se clasifican en Tecnicas y Blandas.
+        **Cache**: Respuesta cacheable por 60 segundos.
+        **Rate limit**: max 100 solicitudes/minuto.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Catalogo de habilidades obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HabilidadResponse'
+              example:
+                data:
+                  - id: 1
+                    nombre_habilidad: "PHP"
+                    categoria: "Tecnica"
+                    activo: 1
+                  - id: 2
+                    nombre_habilidad: "MySQL"
+                    categoria: "Tecnica"
+                    activo: 1
+                  - id: 3
+                    nombre_habilidad: "Trabajo en equipo"
+                    categoria: "Blanda"
+                    activo: 1
+        '401':
+          description: Sin autorizacion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    post:
+      tags:
+        - Habilidades
+      summary: Agregar una habilidad al catalogo
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabilidadBody'
+            examples:
+              habilidad_tecnica:
+                summary: Habilidad tecnica
+                value:
+                  VCH_NOMBRE_HABILIDAD: "JavaScript"
+                  VCH_CATEGORIA: "Tecnica"
+              habilidad_blanda:
+                summary: Habilidad blanda
+                value:
+                  VCH_NOMBRE_HABILIDAD: "Liderazgo"
+                  VCH_CATEGORIA: "Blanda"
+      responses:
+        '201':
+          description: Habilidad agregada al catalogo exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: Datos incompletos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al insertar en BD
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    put:
+      tags:
+        - Habilidades
+      summary: Actualizar una habilidad del catalogo
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabilidadPut'
+            example:
+              ID_HABILIDAD: 1
+              VCH_NOMBRE_HABILIDAD: "PHP 8"
+              VCH_CATEGORIA: "Tecnica"
+      responses:
+        '200':
+          description: Habilidad actualizada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: Datos incompletos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al actualizar en BD
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    delete:
+      tags:
+        - Habilidades
+      summary: Eliminar una habilidad del catalogo
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ID_HABILIDAD
+              properties:
+                ID_HABILIDAD:
+                  type: integer
+                  example: 1
+      responses:
+        '200':
+          description: Habilidad eliminada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: ID no proporcionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al eliminar en BD
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    patch:
+      tags:
+        - Habilidades
+      summary: Encender o apagar una habilidad del catalogo
+      description: Activa o desactiva una habilidad. Las inactivas no aparecen en el formulario de candidatos.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ID_HABILIDAD
+              properties:
+                ID_HABILIDAD:
+                  type: integer
+                  example: 1
+      responses:
+        '200':
+          description: Estado de la habilidad actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: ID no proporcionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Token incorrecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Error al actualizar el estado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
